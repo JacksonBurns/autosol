@@ -28,27 +28,41 @@ data_dir.mkdir(exist_ok=True)
 
 calc = Calculator(descriptors, ignore_3D=True)
 
-train_file = data_dir / "train.parquet"
-val_file = data_dir / "validation.parquet"
+train_file = data_dir / "train_winsorized.parquet"
+# val_file = data_dir / "validation.parquet"
 if not train_file.exists():
     train_data = pd.read_csv(data_dir / "AqSolDBc.csv")
     train_data["rdkit_mol"] = train_data["SmilesCurated"].apply(MolFromSmiles)
     train_data = train_data.dropna(axis=0, subset=["rdkit_mol"])
     # determine our own training and validation sets
-    *_, train_idxs, val_idxs = train_test_split_molecules(train_data["rdkit_mol"], sampler="kmeans", train_size=0.80, test_size=0.20, return_indices=True)
+    # *_, train_idxs, val_idxs = train_test_split_molecules(train_data["rdkit_mol"], sampler="kmeans", train_size=0.80, test_size=0.20, return_indices=True)
     train_descs: pd.DataFrame = calc.pandas(train_data["rdkit_mol"]).fill_missing()
-    train_df = pd.concat((train_data[["ExperimentalLogS"]], train_descs), axis=1)
-    train_df.iloc[train_idxs].to_parquet(train_file)
-    train_df.iloc[val_idxs].to_parquet(val_file)
-train_df = pd.read_parquet(train_file)
-val_df = pd.read_parquet(val_file)
+    
+    # winsorization
+    train_descs = train_descs.astype(float, errors='ignore')
+    feature_means = train_descs.mean(axis=0, skipna=True)
+    feature_stdev = train_descs.var(axis=0, skipna=True).pow(0.5)
+    n_sigma = 3
+    train_descs.clip(lower=feature_means - n_sigma * feature_stdev, upper=feature_means + n_sigma * feature_stdev, axis=1, inplace=True)
 
-test_file = data_dir / "test.parquet"
+    train_df = pd.concat((train_data[["ExperimentalLogS"]], train_descs), axis=1)
+    train_df.to_parquet(train_file)
+    # train_df.iloc[val_idxs].to_parquet(val_file)
+train_df = pd.read_parquet(train_file)
+# val_df = pd.read_parquet(val_file)
+
+
+test_file = data_dir / "test_winsorized.parquet"
 if not test_file.exists():
     test_data = pd.read_csv(data_dir / "OChemUnseen.csv")
     test_data["rdkit_mol"] = test_data["SMILES"].apply(MolFromSmiles)
     test_data = test_data.dropna(axis=0, subset=["rdkit_mol"])
     test_descs: pd.DataFrame = calc.pandas(test_data["rdkit_mol"]).fill_missing()
+    
+    # winsorization - note that we use the training statistics to avoid a data leak
+    test_descs = test_descs.astype(float, errors='ignore')
+    test_descs.clip(lower=feature_means - n_sigma * feature_stdev, upper=feature_means + n_sigma * feature_stdev, axis=1, inplace=True)
+    
     test_df = pd.concat((test_data[["LogS"]], test_descs), axis=1)
     test_df.to_parquet(test_file)
 test_df = pd.read_parquet(test_file)
@@ -56,9 +70,9 @@ test_df = pd.read_parquet(test_file)
 test_df = test_df.rename(columns={"LogS": "ExperimentalLogS"})
 
 train_data = TabularDataset(train_df)
-val_data = TabularDataset(val_df)
+# val_data = TabularDataset(val_df)
 test_data = TabularDataset(test_df)
-
+'''
 # training from scratch
 outdir = '/datai/autogluon_random_winsorization'
 if Path(outdir).exists():
@@ -72,17 +86,18 @@ predictor = TabularPredictor(
 )
 predictor.fit(
     train_data=train_data,
-    tuning_data=val_data,
-    use_bag_holdout=True,
+    # tuning_data=val_data,
+    # use_bag_holdout=True,
     test_data=test_data,  # not seen during training
     num_gpus=8,
     presets='best_quality',
     time_limit=3600*100,  # 100 hours
 )
+'''
 # initial quick run
 # predictor = TabularPredictor.load("/home/jwburns/autosol/AutogluonModels/ag-20250113_212151")
 # predictor = TabularPredictor.load("/datai/autogluon")  # best_quality random splitting based model
-
+predictor = TabularPredictor.load("/datai/autogluon_random_winsorization")  # winsorized, random split
 # print(f"Test Set Performance:", predictor.evaluate(test_data))
 predictions = predictor.predict(test_data, as_pandas=False)
 
