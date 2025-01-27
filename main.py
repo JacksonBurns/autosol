@@ -26,6 +26,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 data_dir = Path("data")
 data_dir.mkdir(exist_ok=True)
 
+""" using Morded descriptors
 calc = Calculator(descriptors, ignore_3D=True)
 
 train_file = data_dir / "train_winsorized.parquet"
@@ -68,13 +69,21 @@ if not test_file.exists():
 test_df = pd.read_parquet(test_file)
 # match the target column names
 test_df = test_df.rename(columns={"LogS": "ExperimentalLogS"})
+"""
+
+train_df = pd.read_csv("data/train_chemprop_fprints_0.csv")
+train_df["ExperimentalLogS"] = pd.read_csv("data/AqSolDBc.csv")["ExperimentalLogS"]
+
+test_df = pd.read_csv("data/test_chemprop_fprints_0.csv")
+test_df["ExperimentalLogS"] = pd.read_csv("data/OChemUnseen_valid.csv")["LogS"]
 
 train_data = TabularDataset(train_df)
 # val_data = TabularDataset(val_df)
 test_data = TabularDataset(test_df)
-'''
+
+
 # training from scratch
-outdir = '/datai/autogluon_random_winsorization'
+outdir = '/datai/autogluon_chemprop_fprint'
 if Path(outdir).exists():
     print("Output dir already exists, exiting to avoid overwrite!")
     exit(1)
@@ -93,11 +102,11 @@ predictor.fit(
     presets='best_quality',
     time_limit=3600*100,  # 100 hours
 )
-'''
+
 # initial quick run
 # predictor = TabularPredictor.load("/home/jwburns/autosol/AutogluonModels/ag-20250113_212151")
 # predictor = TabularPredictor.load("/datai/autogluon")  # best_quality random splitting based model
-predictor = TabularPredictor.load("/datai/autogluon_random_winsorization")  # winsorized, random split
+# predictor = TabularPredictor.load("/datai/autogluon_random_winsorization")  # winsorized, random split
 # print(f"Test Set Performance:", predictor.evaluate(test_data))
 predictions = predictor.predict(test_data, as_pandas=False)
 

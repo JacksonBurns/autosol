@@ -37,3 +37,10 @@ CUDA_VISIBLE_DEVICES=0 chemprop fingerprint \
     --model-path chemprop_training/AqSolDBc/2025-01-27T10-18-38/model_0/best.pt \
     --ffn-block-index 0 \
     --smiles-columns SMILES
+
+CUDA_VISIBLE_DEVICES=0 chemprop fingerprint \
+    --test-path data/AqSolDBc.csv \
+    --output data/train_chemprop_fprints.csv \
+    --model-path chemprop_training/AqSolDBc/2025-01-27T10-18-38/model_0/best.pt \
+    --ffn-block-index 0 \
+    --smiles-columns SMILES
